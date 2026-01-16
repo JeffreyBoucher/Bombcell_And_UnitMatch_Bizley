@@ -255,6 +255,7 @@ def run_bombcell_session(session_config):
 
         print(f"   ✅ Analysis complete!")
         print(f"   📊 Total units: {len(unit_type)}")
+        plot_summary_data(quality_metrics, template_waveforms, unit_type, unit_type_string, param)
 
     # Check UnitMatch waveforms
     raw_waveforms_dir = save_path / "RawWaveforms"
@@ -405,17 +406,45 @@ um_param['KS_dirs'] = KS_dirs
 
 #### I set up the "custom_bombcell_paths" in cell 2 now.
 
-spike_positions = np.array([]) np.load(ks_dir / "spike_positions.npy")
-spike_clusters = np.load(ks_dir / "spike_clusters.npy")
-spike_times = np.load(ks_dir / "spike_times.npy")
+spike_positions_all = []
+spike_clusters_all = []
+spike_times_all = []
+nb_units_sessions = []
 
-
+time_last_spike=0
+id_last_cluster=0
 print(f"📁 Kilosort directories: {len(KS_dirs)}")
 for i, ks_dir in enumerate(KS_dirs):
     print(f"   Session {i + 1}: {Path(ks_dir).name}")
-    spike_positions= np.concatenate(spike_positions,np.load(ks_dir / "spike_positions.npy"))
-    spike_clusters = np.concatenate(spike_clusters,np.load(ks_dir / "spike_clusters.npy"))
-    spike_times = np.concatenate(spike_times,np.load(ks_dir / "spike_times.npy"))
+    spike_positions= np.load(ks_dir / "spike_positions.npy")
+    spike_clusters = np.load(ks_dir / "spike_clusters.npy")
+    spike_times = np.load(ks_dir / "spike_times.npy")
+
+    units= np.unique(spike_clusters)
+    nb_units= len(units)
+    nb_units_sessions.append(nb_units)
+
+    spike_times = spike_times+time_last_spike
+    spike_clusters= spike_clusters+ id_last_cluster ##indexing starts at 0
+    time_last_spike= max(spike_times)
+    id_last_cluster= max(spike_clusters)+1
+
+    df_spikes= pd.DataFrame(list(zip(spike_positions, spike_clusters, spike_times)), columns=["Position", "Clus", "Times"])
+    df_spikes.sort_values("Clus", ascending=True, inplace=True)
+
+    spike_positions = list(df_spikes["Position"])
+    spike_clusters = list(df_spikes["Clus"])
+    spike_times = list(df_spikes["Times"])
+
+    for k in range(len(spike_positions)):
+        spike_positions_all.append(spike_positions[k])
+        spike_clusters_all.append(spike_clusters[k])
+        spike_times_all.append(spike_times[k])
+
+spike_positions_all = np.array(spike_positions_all)
+spike_clusters_all = np.array(spike_clusters_all)
+spike_times_all = np.array(spike_times_all)
+
 
 print(f"📊 BombCell unit classifications:")
 for i, bc_path in enumerate(custom_bombcell_paths):
@@ -492,30 +521,27 @@ for (iiiii,shankSplitSubset) in enumerate(shankSplitSubsets.T):
         'original_ids': np.concatenate(good_units)
     }
 
-    spike_positions = np.load(ks_dir / "spike_positions.npy")
-    spike_clusters = np.load(ks_dir / "spike_clusters.npy")
-    spike_times = np.load(ks_dir / "spike_times.npy")
-
-    df_spikes= pd.DataFrame(list(zip(spike_positions, spike_clusters, spike_times)), columns=["Position", "Clus", "Times"])
-    df_spikes.sort_values("Clus", ascending=True, inplace=True)
-
-    spike_positions = np.array(df_spikes["Position"])
-    spike_clusters = np.array(df_spikes["Clus"])
-    spike_times = np.array(df_spikes["Times"])
 
     spike_pos_by_clus= []
-    clus=spike_clusters[0]
+    spike_time_by_clus= []
+    clus=spike_clusters_all[0]
     spike_for_this_clus = []
+    times_for_this_clus = []
     count=0
-    for i, pos in enumerate(spike_positions):
-        if spike_clusters[i] == clus:
+    for i, pos in enumerate(spike_positions_all):
+        if spike_clusters_all[i] == clus:
             spike_for_this_clus.append(pos)
+            times_for_this_clus.append(spike_times_all[i])
         else:
             spike_pos_by_clus.append(spike_for_this_clus.copy())
+            spike_time_by_clus.append(times_for_this_clus.copy())
             spike_for_this_clus=[]
+            times_for_this_clus=[]
             spike_for_this_clus.append(pos)
-            clus= spike_clusters[i]
-    spike_pos_by_clus.append(spike_for_this_clus)
+            times_for_this_clus.append(spike_times_all[i])
+            clus= spike_clusters_all[i]
+    spike_pos_by_clus.append(spike_for_this_clus.copy())
+    spike_time_by_clus.append(times_for_this_clus.copy())
 
     session_clus= []
     session_here= 0
@@ -528,11 +554,34 @@ for (iiiii,shankSplitSubset) in enumerate(shankSplitSubsets.T):
         full_number+= len(k)
     print(full_number)
 
+    ## Filter good units
+
+    spike_pos_GU= []
+    spike_time_GU= []
+    session_clus_GU= []
+    sess_nb=0
+    clus_nb=0
+    for j,sess in enumerate(session_clus):
+        if sess==0 or sess==1:
+            continue
+        if sess!= sess_nb:
+            sess_nb+=1
+            clus_nb= j
+        ids_this_session= [good_units[sess][m][0] for m in range(len(good_units[sess]))]
+        if j-clus_nb in ids_this_session:
+            spike_pos_GU.append(spike_pos_by_clus[j])
+            spike_time_GU.append(spike_time_by_clus[j])
+            session_clus_GU.append(sess)
+        if sess==4:
+            break
+
+
+
     ##Test spike loc
     motion_corrected_pos=[]
-    for k,positions in enumerate(spike_pos_by_clus):
+    for k,positions in enumerate(spike_pos_GU):
         positions_this_clus = np.vstack(positions)
-        motion_corrected_clus= correct_motion_on_channel_pos(positions_this_clus, motion_week, motion_sessions, session_clus[k], week_session_correspondance)
+        motion_corrected_clus= correct_motion_on_channel_pos(positions_this_clus, motion_week, motion_sessions, session_clus_GU[k], week_session_correspondance)
         motion_corrected_pos.append(motion_corrected_clus)
 
     motion_corrected_all_spikes = []
@@ -541,17 +590,19 @@ for (iiiii,shankSplitSubset) in enumerate(shankSplitSubsets.T):
             motion_corrected_all_spikes.append(j)
     print('pause and check')
 
-    y_pos_init= [spike_positions[i][1] for i in range(len(spike_positions))]
+    colortable= mcolors.CSS4_COLORS[len(motion_corrected_pos)]
+
+    y_pos_init= [spike_positions_all[i][1] for i in range(len(spike_positions_all))]
     y_pos_corrected= [motion_corrected_all_spikes[i][1] for i in range(len(motion_corrected_all_spikes))]
 
     fig, ax = plt.subplots()
-    ax.scatter( spike_times, y_pos_init , s=5)#marker="o", color="blue", markersize= 5)
+    ax.scatter( spike_times_all, y_pos_init , s=5)#marker="o", color="blue", markersize= 5)
     ax.set_xlabel("Time")
     ax.set_ylabel("Position")
     plt.show()
 
     fig, ax = plt.subplots()
-    ax.scatter( spike_times, y_pos_corrected , s=5)# marker="o", color="blue", markersize= 5)
+    ax.scatter( spike_times_all, y_pos_corrected , s=5)# marker="o", color="blue", markersize= 5)
     ax.set_xlabel("Time")
     ax.set_ylabel("Position")
     plt.show()
