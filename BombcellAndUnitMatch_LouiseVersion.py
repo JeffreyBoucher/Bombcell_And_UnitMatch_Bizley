@@ -40,7 +40,7 @@ print("🚀 Ready to analyze neural data!")
 
 ###### THIS IS JEFFREY AND MINE4S CODE SPECIFIC, incluse your own function that outputs a 1-dimensional array of pathlib.Path objects
 # representing the directories of NP sessions, sorted in ascending order for all the sessions you want
-        of their file creation times.
+#        of their file creation times.
 def sort_np_sessions(
         sessions_list,
         minimum_duration_s=-1,
@@ -309,18 +309,6 @@ print(f"\n🎉 BombCell analysis complete for {len(session_results)} sessions!")
 ###### FORTH CELL ########
 
 ### Later used functions ###
-def extract_motion(ks_dir, file_name):
-    motion = []
-    space_bins = []
-
-    df = pd.read_csv(ks_dir / file_name)
-    #sessions = df['session']
-    # df_list = df.values.tolist()
-    # for i in sessions:
-    #     motion.append(df['motion'][df['session'] == i])
-    #     space_bins.append(df['space'][df['session'] == i])
-
-    return df #motion, space_bins, sessions
 
 def intersection(A,B):
     U = []
@@ -329,38 +317,85 @@ def intersection(A,B):
             U.append(i)
     return U
 
-def correct_motion_on_spike_pos(position, motion_sessions, session, half_bin_size=50):
-    if session== 0:
-        return position
-    else:
-        new_position = position
-        for i in range(session):
-            motion_df = motion_sessions[motion_sessions['session'] ==i]
-            bins_center= np.array(motion_df['center_space_bin'])
-            bin_low= list(np.where(new_position <= bins_center+ half_bin_size)) #we look for the indice of the
-            bin_high = list(np.where(new_position >= bins_center- half_bin_size))
-            if len(bin_low[0])!=0 and len(bin_high[0])!=0:
-                if len(intersection(bin_low[0],bin_high[0])) == 1: #when computing new bins centers for weeks, distance between bins changes
-                    bin_loc= intersection(bin_low[0],bin_high[0])[0]
-                else:
-                    dist_low= abs(new_position-bins_center[bin_low[0][0]])
-                    dist_high= abs(bins_center[bin_high[0][-1]]-new_position)
-                    if dist_low>dist_high:
-                        bin_loc= bin_high[0][0]
-                    else:
-                        bin_loc= bin_low[0][-1]
-            else:
-                if len(bin_low[0])==0:
-                    bin_loc = bin_high[0][-1]
-                elif len(bin_high[0])==0:
-                    bin_loc = bin_low[0][0]
-            local_motion = motion_df['motion'].iloc[bin_loc]
-            new_position+= local_motion
-        return new_position
-
-
-
 ### GETTING ALL UNITS ###
+
+def load_kilosort_and_bombcell_files(KS_dirs):
+    spike_positions_all = []
+    spike_clusters_all = []
+    spike_times_all = []
+    spike_amps_all = []
+    nb_units_session = []
+    Label_Bc_all_clus= []
+    Id_Bc_all_clus = []
+
+    time_last_spike=0
+    id_last_cluster=0
+    #Bombcell eliminates certain units so I'm keeping the list of KS ids of units kept by Bombcell for when I'm making the correspondance
+    # with TDT corrected spike trains per unit
+    id_kept_Bc= []
+    session_kept_Bc= []
+    print(f"📁 Kilosort directories: {len(KS_dirs)}")
+    for i, ks_dir in enumerate(KS_dirs):
+        print(f"   Session {i + 1}: {Path(ks_dir).name}")
+        spike_positions= np.load(ks_dir / "spike_positions.npy")
+        spike_clusters = np.load(ks_dir / "spike_clusters.npy")
+        spike_times = np.load(ks_dir / "spike_times.npy")
+        spike_amps = np.load(ks_dir / "amplitudes.npy")
+        spike_temps = np.load(ks_dir / "spike_templates.npy")
+        type_units = pd.read_csv(ks_dir / "cluster_bc_unitType.tsv", sep='\t')
+        ids = type_units['cluster_id'].values
+        labels = type_units['bc_unitType'].values
+        id_kept_Bc.extend(ids)
+        session_kept_Bc.extend(np.full(len(ids), i))
+
+        #units= np.unique(spike_clusters)
+        nb_units= len(ids)
+        nb_units_session.append(nb_units)
+
+        spike_times = spike_times+time_last_spike
+        spike_clusters_new_ids= spike_clusters+ id_last_cluster ##indexing starts at 0
+        ids = ids + id_last_cluster
+        time_last_spike= max(spike_times) +30000 #maybe
+        id_last_cluster= max(ids)+1
+
+        df_spikes= pd.DataFrame(list(zip(spike_positions, spike_clusters, spike_times, spike_amps, spike_clusters_new_ids)),
+                                columns=["Position", "Clus", "Time", "Amplitude", "Clus new IDs"])
+        df_spikes.sort_values("Clus", ascending=True, inplace=True)
+
+        spike_positions = list(df_spikes["Position"])
+        spike_clusters = list(df_spikes["Clus"])
+        spike_times = list(df_spikes["Time"])
+        spike_amps = list(df_spikes["Amplitude"])
+        spike_clusters_new_ids = list(df_spikes["Clus new IDs"])
+
+        for k in range(len(spike_positions)):
+            if spike_clusters[k] in type_units['cluster_id'].values:
+                spike_positions_all.append(spike_positions[k])
+                spike_clusters_all.append(spike_clusters_new_ids[k])
+                spike_times_all.append(spike_times[k])
+                spike_amps_all.append(spike_amps[k])
+        for k in range(len(labels)):
+            Label_Bc_all_clus.append(labels[k])
+            Id_Bc_all_clus.append(ids[k])
+
+    Df_units_kept_by_Bc= pd.DataFrame(list(zip(id_kept_Bc,session_kept_Bc)), columns=(['Id','Session']))
+
+    spike_positions_all = np.array(spike_positions_all)
+    spike_clusters_all = np.array(spike_clusters_all)
+    spike_times_all = np.array(spike_times_all)
+    spike_amps_all = np.array(spike_amps_all)
+    Label_Bc_all_clus = np.array(Label_Bc_all_clus)
+    Id_Bc_all_clus= np.array(Id_Bc_all_clus)
+    GU_and_MUA= []#((Label_Bc_all_clus[i] == 'GU') or (Label_Bc_all_clus[i] == 'MUA')) for i in range(len(Id_Bc_all_clus))]
+
+    count=0
+    for i,type_clus in enumerate(Label_Bc_all_clus):
+        if (type_clus == 'GOOD') or (type_clus == 'MUA'):
+            GU_and_MUA.append(count)
+            count+=1
+        else:
+            GU_and_MUA.append(float('nan'))
+    return spike_positions_all, spike_clusters_all, spike_times_all, spike_amps_all, nb_units_session, id_kept_Bc, GU_and_MUA, Id_Bc_all_clus
 
 def create_list_all_units(spike_positions_all, spike_clusters_all, spike_times_all, spike_amps_all):
     """
@@ -746,11 +781,11 @@ def load_behavioral_data(path, date_min= None, date_max= None):
                 mdata =data['data']
                 df = get_data_from_mat_file(mdata, interest_variables_already_there,file)
                 len_trial= []
-                for i,start_trial in enumerate(df['startTrialLick'].to_list()):
-                    if i == len(df['startTrialLick'].to_list())-1:
-                        len_trial.append(df['lickRelease'].to_list()[i] - start_trial) ### TO CHANGE TO A BETTER END OF TRIAL VARIABLE
+                for j,start_trial in enumerate(df['startTrialLick'].to_list()):
+                    if j == len(df['startTrialLick'].to_list())-1:
+                        len_trial.append(df['lickRelease'].to_list()[j] - start_trial) ### TO CHANGE TO A BETTER END OF TRIAL VARIABLE
                         break
-                    len_trial.append(df['startTrialLick'].to_list()[i+1] - start_trial)
+                    len_trial.append(df['startTrialLick'].to_list()[j+1] - start_trial)
                 df['TrialLength'] = len_trial
                 data_frame_behavior= pd.concat([data_frame_behavior, df])
                 session.extend(np.full(df.shape[0], i))
@@ -1143,18 +1178,6 @@ def correct_motion_on_channel_pos(positions, motion_week, motion_sessions, sessi
 
 def get_df_and_plots(Df_clusters, GU_and_MUA, Id_Bc_all_clus, UIDs):
 
-    Df_GU_MUA= filter_GU_MUA(Df_clusters, GU_and_MUA, Id_Bc_all_clus)
-    Df_Matched_GU_MUA= get_UM_id(Df_GU_MUA, UIDs)
-
-    non_matched_units, matched_within, matched_accross, matched_both_ways= check_matching_status(Df_Matched_GU_MUA)
-    add_matching_status_to_df(Df_Matched_GU_MUA, non_matched_units, matched_within, matched_accross, matched_both_ways)
-
-    get_corrected_average_positions(Df_Matched_GU_MUA, motion_sessions)
-    add_var_pos(Df_Matched_GU_MUA)
-    add_isi(Df_Matched_GU_MUA)
-    add_average_firing_rate(Df_Matched_GU_MUA)
-    get_quantile_amplitude_per_session(Df_Matched_GU_MUA)
-
     #plot_spikes_matchingunits(Df_Matched_GU_MUA['Y Positions'], Df_Matched_GU_MUA['Times'])
     plot_spikes_matchingunits(Df_Matched_GU_MUA['Array old pos'], Df_Matched_GU_MUA['Times'], Df_Matched_GU_MUA)
     #plot_spikes_matchingunits(Df_Matched_GU_MUA['Array new pos'], Df_Matched_GU_MUA['Times'])
@@ -1179,7 +1202,7 @@ def get_df_and_plots(Df_clusters, GU_and_MUA, Id_Bc_all_clus, UIDs):
     plot_spikes_gradient_per_session(third_quantile_amp, 'Mean amplitude', 'Array new pos')
 
     matched_accross= Df_Matched_GU_MUA[Df_Matched_GU_MUA['Matching status'] == 'Accross']
-    plot_hist_matching_units(matched_accross)
+    plot_hist_matching_units(matched_accross, param='ISI')
 
 
 print("🎯 Setting up UnitMatch for cross-session tracking...")
@@ -1187,94 +1210,22 @@ print("🎯 Setting up UnitMatch for cross-session tracking...")
 # Get default UnitMatch parameters
 um_param = default_params.get_default_param()
 
+#Set up parameters that define whether the whole code is ran or variables are just loaded from pickles
+RunUnitMatch= False
+SaveUIDToCSV= False
+LoadPickleBombcellAndKilosort= True
+LoadPickleDataFrame= False
+LoadTDTCorrectedTimes= True
+ApplyMotionCorrectionInUnitMatch= True
+
+
 # Set up paths from our BombCell results
 KS_dirs = [result['ks_dir'] for result in session_results]
 um_param['KS_dirs'] = KS_dirs
 
 #### I set up the "custom_bombcell_paths" in cell 2 now.
 
-spike_positions_all = []
-spike_clusters_all = []
-spike_times_all = []
-spike_amps_all = []
-nb_units_session = []
-Label_Bc_all_clus= []
-Id_Bc_all_clus = []
-
-time_last_spike=0
-id_last_cluster=0
-#Bombcell eliminates certain units so I'm keeping the list of KS ids of units kept by Bombcell for when I have to use
-id_kept_Bc= []
-session_kept_Bc= []
 print(f"📁 Kilosort directories: {len(KS_dirs)}")
-for i, ks_dir in enumerate(KS_dirs):
-    if False:
-        print(f"   Session {i + 1}: {Path(ks_dir).name}")
-        spike_positions= np.load(ks_dir / "spike_positions.npy")
-        spike_clusters = np.load(ks_dir / "spike_clusters.npy")
-        spike_times = np.load(ks_dir / "spike_times.npy")
-        spike_amps = np.load(ks_dir / "amplitudes.npy")
-        spike_temps = np.load(ks_dir / "spike_templates.npy")
-        type_units = pd.read_csv(ks_dir / "cluster_bc_unitType.tsv", sep='\t')
-        ids = type_units['cluster_id'].values
-        labels = type_units['bc_unitType'].values
-        id_kept_Bc.extend(ids)
-        session_kept_Bc.extend(np.full(len(ids), i))
-
-        #units= np.unique(spike_clusters)
-        nb_units= len(ids)
-        nb_units_session.append(nb_units)
-
-        spike_times = spike_times+time_last_spike
-        spike_clusters_new_ids= spike_clusters+ id_last_cluster ##indexing starts at 0
-        ids = ids + id_last_cluster
-        time_last_spike= max(spike_times) +30000 #maybe
-        id_last_cluster= max(ids)+1
-
-        df_spikes= pd.DataFrame(list(zip(spike_positions, spike_clusters, spike_times, spike_amps, spike_clusters_new_ids)), columns=["Position", "Clus", "Time", "Amplitude", "Clus new IDs"])
-        df_spikes.sort_values("Clus", ascending=True, inplace=True)
-
-        spike_positions = list(df_spikes["Position"])
-        spike_clusters = list(df_spikes["Clus"])
-        spike_times = list(df_spikes["Time"])
-        spike_amps = list(df_spikes["Amplitude"])
-        spike_clusters_new_ids = list(df_spikes["Clus new IDs"])
-
-        for k in range(len(spike_positions)):
-            if spike_clusters[k] in type_units['cluster_id'].values:
-                spike_positions_all.append(spike_positions[k])
-                spike_clusters_all.append(spike_clusters_new_ids[k])
-                spike_times_all.append(spike_times[k])
-                spike_amps_all.append(spike_amps[k])
-        for k in range(len(labels)):
-            Label_Bc_all_clus.append(labels[k])
-            Id_Bc_all_clus.append(ids[k])
-if False:
-    Df_units_kept_by_Bc= pd.DataFrame(list(zip(id_kept_Bc,session_kept_Bc)), columns=(['Id','Session']))
-
-    spike_positions_all = np.array(spike_positions_all)
-    spike_clusters_all = np.array(spike_clusters_all)
-    spike_times_all = np.array(spike_times_all)
-    Label_Bc_all_clus = np.array(Label_Bc_all_clus)
-    Id_Bc_all_clus= np.array(Id_Bc_all_clus)
-    GU_and_MUA= []#((Label_Bc_all_clus[i] == 'GU') or (Label_Bc_all_clus[i] == 'MUA')) for i in range(len(Id_Bc_all_clus))]
-    GU= []#Label_Bc_all_clus[i] == 'GU' for i in range(len(Id_Bc_all_clus))]
-
-    count=0
-    for i,type_clus in enumerate(Label_Bc_all_clus):
-        if (type_clus == 'GOOD') or (type_clus == 'MUA'):
-            GU_and_MUA.append(count)
-            count+=1
-        else:
-            GU_and_MUA.append(float('nan'))
-
-    # for i,type_clus in enumerate(Label_Bc_all_clus):
-    #     if type_clus == 'GU':
-    #         GU.append(1)
-    #     else:
-    #         GU.append(0)
-#
-
 
 print(f"📊 BombCell unit classifications:")
 for i, bc_path in enumerate(custom_bombcell_paths):
@@ -1287,57 +1238,58 @@ for i, wv_path in enumerate(custom_raw_waveform_paths):
     n_files = len(list(Path(wv_path).glob("Unit*_RawSpikes.npy"))) if Path(wv_path).exists() else 0
     print(f"   Session {i + 1}: {exists} {n_files} waveform files")
 
-motion_week= extract_motion(ks_dir, 'motion_weeks.csv')
-motion_sessions= extract_motion(ks_dir, 'motion_sessions.csv')
-motion_sessions_old= extract_motion(ks_dir, 'motion_sessions_old.csv')
-week_session_correspondance = np.load(ks_dir / "session_to_week_id.npy")
+motion_sessions= pd.read_csv(KS_dirs[-1]/ 'motion_sessions.csv')
+motion_sessions_old= pd.read_csv(KS_dirs[-1]/ 'motion_sessions_old.csv')
+motion_week= pd.read_csv(KS_dirs[-1]/ 'motion_weeks.csv')
+week_session_correspondance= np.load(KS_dirs[-1]/ 'session_to_week_id.npy')
 
 
+
+if RunUnitMatch:
 # Setup UnitMatch paths - this matches exactly what processing_playground does
-try:
-    wave_paths, unit_label_paths, channel_pos = util.paths_from_KS(  #
-        KS_dirs,
-        custom_raw_waveform_paths=custom_raw_waveform_paths,
-        custom_bombcell_paths=custom_bombcell_paths,
-        motion_week=motion_week,
-        motion_sessions=motion_sessions,
-        week_session_correspondance=week_session_correspondance,
-        do_channel_correction=True
-    )
+    try:
+        wave_paths, unit_label_paths, channel_pos = util.paths_from_KS(  #
+            KS_dirs,
+            custom_raw_waveform_paths=custom_raw_waveform_paths,
+            custom_bombcell_paths=custom_bombcell_paths,
+            motion_week=motion_week,
+            motion_sessions=motion_sessions,
+            week_session_correspondance=week_session_correspondance,
+            do_channel_correction=ApplyMotionCorrectionInUnitMatch
+        )
 
-    #motion, space_bins, sessions = extract_motion(ks_dir
+        #motion, space_bins, sessions = extract_motion(ks_dir
 
-    um_param = util.get_probe_geometry(channel_pos[0], um_param) ### if I was to manually create virtual shanks, this might be where to do it...
-    print("✅ UnitMatch paths configured successfully")
-    UNITMATCH_READY = True
+        um_param = util.get_probe_geometry(channel_pos[0], um_param) ### if I was to manually create virtual shanks, this might be where to do it...
+        print("✅ UnitMatch paths configured successfully")
+        UNITMATCH_READY = True
 
-except Exception as e:
-    print(f"❌ Error setting up UnitMatch paths: {e}")
-    print("   Make sure BombCell has been run and waveforms extracted")
-    UNITMATCH_READY = False
+    except Exception as e:
+        print(f"❌ Error setting up UnitMatch paths: {e}")
+        print("   Make sure BombCell has been run and waveforms extracted")
+        UNITMATCH_READY = False
 
-########## FIFTH CELL #############
+    ########## FIFTH CELL #############
 
-# %%
-# 🧠 Run UnitMatch Analysis Pipeline
+    # %%
+    # 🧠 Run UnitMatch Analysis Pipeline
 
 
-print("🚀 Running UnitMatch cross-session analysis...")
-if manuallySplitShank:
-    for (iiiii,c_pos) in enumerate(channel_pos):
-        if not iiiii:
-            continue
-        if not (channel_pos[0] == c_pos).all():
-            print("warning, you don't seem to have all c_pos equal. This shouldn't happen unless you mixed channel maps. Still assuming c_pos[0] is representative")
-    shankSplitSubsets = np.full((np.shape(channel_pos[0])[0],len(manualShankSplitRanged)), False)
-    for (iiiii,shankRange) in enumerate(manualShankSplitRanged):
-        shankSplitSubsets[:,iiiii] = ((shankRange[0] <= channel_pos[0][:,2])&(shankRange[1] > channel_pos[0][:,2]))
-else:
-    shankSplitSubsets = np.full((np.shape(channel_pos[0])[0],1), True)
-# Step 0: Load good units and waveform data
-print("📊 Step 0: Loading unit waveforms...")
-for (iiiii,shankSplitSubset) in enumerate(shankSplitSubsets.T):
-    if False:
+    print("🚀 Running UnitMatch cross-session analysis...")
+    if manuallySplitShank:
+        for (iiiii,c_pos) in enumerate(channel_pos):
+            if not iiiii:
+                continue
+            if not (channel_pos[0] == c_pos).all():
+                print("warning, you don't seem to have all c_pos equal. This shouldn't happen unless you mixed channel maps. Still assuming c_pos[0] is representative")
+        shankSplitSubsets = np.full((np.shape(channel_pos[0])[0],len(manualShankSplitRanged)), False)
+        for (iiiii,shankRange) in enumerate(manualShankSplitRanged):
+            shankSplitSubsets[:,iiiii] = ((shankRange[0] <= channel_pos[0][:,2])&(shankRange[1] > channel_pos[0][:,2]))
+    else:
+        shankSplitSubsets = np.full((np.shape(channel_pos[0])[0],1), True)
+    # Step 0: Load good units and waveform data
+    print("📊 Step 0: Loading unit waveforms...")
+    for (iiiii,shankSplitSubset) in enumerate(shankSplitSubsets.T):
         shankSplitSubset =shankSplitSubsets[:,iiiii] # later I will loop
         waveform, session_id, session_switch, within_session, good_units, um_param = util.load_good_waveforms(
             wave_paths, unit_label_paths, um_param, good_units_only=True,splitShankActive=True,channel_pos=channel_pos,shankSplitSubset=shankSplitSubset ### good units only actually seems to include MUA, I think? Should double check, but following it with breakpoints, that seems to be the case. I might still want this false because tracking noise might be of interest... One expects noise to not track across sessions, and also some noise should really be MUA...
@@ -1354,8 +1306,7 @@ for (iiiii,shankSplitSubset) in enumerate(shankSplitSubsets.T):
             'original_ids': np.concatenate(good_units)
         }
 
-    if False:
-# Step 1: Extract waveform parameters
+    # Step 1: Extract waveform parameters
         print("🔍 Step 1: Extracting waveform features...")
         extracted_wave_properties = ov.extract_parameters(waveform, channel_pos, clus_info, um_param)
 
@@ -1391,49 +1342,36 @@ for (iiiii,shankSplitSubset) in enumerate(shankSplitSubsets.T):
         #CREATING A LIST OF MATCHED UNITS NEW ID, ORIGINAL ID AND ORIGINAL POSITION IN THE LIST OF GOOD UNITS
         UIDs = aid.assign_unique_id(output_prob_matrix, um_param, clus_info)
 
-    if False:
-        with open('UIDs_channelcorr_nointerpolation_UM_drift_corr.pkl','wb') as f:
+        with open('UIDs.pkl','wb') as f:
             pickle.dump(UIDs, f)
+        if SaveUIDToCSV:
+            with open('C:/Users/BizLab/Documents/neuropixels_visualisation/scripts/UIDs_channelcorr_interpolation_UM_drift_corr.csv', mode='w', newline='') as file:
+                # Create a csv.writer object
+                writer = csv.writer(file)
+                # Write data to the CSV file
+                writer.writerows(UIDs)
     print('break to get UID')
-    if True:
-        with open('UIDs_nochannelcorr_noUM_drift_corr.pkl','rb') as f:
-            UID_nochannelcorr_noUM_drift= pickle.load(f)
-        with open('UIDs_nochannelcorr_UM_drift_corr.pkl','rb') as f:
-            UID_nochannelcorr_UM_drift= pickle.load(f)
-        with open('UIDs_channelcorr_nointerpolation_noUM_drift_corr.pkl','rb') as f:
-            UID_no_interpolation_no_UM_drift= pickle.load(f)
-        with open('UIDs_channelcorr_nointerpolation_UM_drift_corr.pkl','rb') as f:
-            UID_no_interpolation_UM_drift= pickle.load(f)
-        with open('UIDs_channelcorr_interpolation_noUM_drift_corr.pkl','rb') as f:
-            UID_interpolation_no_UM_drift= pickle.load(f)
-        with open('UIDs_channelcorr_interpolation_UM_drift_corr.pkl','rb') as f:
-            UID_interpolation_UM_drift= pickle.load(f)
-    # with open('MUA_NewSpksort.pkl', 'rb') as f:
-    #     good_units = pickle.load(f)
-    with open('C:/Users/BizLab/Documents/neuropixels_visualisation/scripts/UIDs_channelcorr_interpolation_UM_drift_corr.csv', mode='w', newline='') as file:
-        # Create a csv.writer object
-        writer = csv.writer(file)
-        # Write data to the CSV file
-        writer.writerows(UID_interpolation_UM_drift)
+else:
+    with open('UIDs.pkl','rb') as f:
+        UIDs= pickle.load(f)
 
-    #spike_pos_by_clus, spike_time_by_clus, spike_amps_by_clus, original_clus_id= create_list_all_units(spike_positions_all, spike_clusters_all, spike_times_all, spike_amps_all)
-    with open('C:/Users/BizLab/Documents/neuropixels_visualisation/scripts/UIDs_channelcorr_interpolation_UM_drift_corr.pkl','wb') as f:
-        pickle.dump(UID_interpolation_UM_drift,f)
+if LoadPickleBombcellAndKilosort:
+    with open('Spike_infos_and_cluster_status.pkl','rb') as f:
+        [spike_positions_all, spike_clusters_all, spike_times_all, spike_amps_all,
+                   nb_units_session, id_kept_Bc, GU_and_MUA, Id_Bc_all_clus]= pickle.load(f)
+    spike_pos_by_clus, spike_time_by_clus, spike_amps_by_clus, original_clus_id= create_list_all_units(spike_positions_all, spike_clusters_all, spike_times_all, spike_amps_all)
+    Df_clusters= create_dataframe_of_cluster(spike_pos_by_clus, spike_time_by_clus, spike_amps_by_clus, original_clus_id,
+                             nb_units_session, motion_sessions, id_kept_Bc)
 
-    if True:
-        with open('Lists_clusters.pkl','rb') as f:
-            [spike_pos_by_clus, spike_time_by_clus, spike_amps_by_clus, original_clus_id]= pickle.load(f)
-    if True:
-        with open('GU_Bc_info.pkl','rb') as f:
-            [GU_and_MUA, Id_Bc_all_clus]= pickle.load(f)
-
-        # Df_clusters= create_dataframe_of_cluster(spike_pos_by_clus, spike_time_by_clus, spike_amps_by_clus, original_clus_id,
-        #                         nb_units_session, motion_sessions, id_kept_Bc)
-
-    if True:
-        with open('DataFrameUnits.pkl','rb') as f:
-            Df_clusters= pickle.load(f)
-
+else:
+    spike_positions_all, spike_clusters_all, spike_times_all, spike_amps_all, nb_units_session, id_kept_Bc, GU_and_MUA, Id_Bc_all_clus= load_kilosort_and_bombcell_files(KS_dirs)
+    with open('Spike_infos_and_cluster_status.pkl', 'wb') as f:
+        pickle.dump([spike_positions_all, spike_clusters_all, spike_times_all, spike_amps_all,
+                   nb_units_session, id_kept_Bc, GU_and_MUA, Id_Bc_all_clus], f)
+    spike_pos_by_clus, spike_time_by_clus, spike_amps_by_clus, original_clus_id= create_list_all_units(spike_positions_all, spike_clusters_all, spike_times_all, spike_amps_all)
+    Df_clusters= create_dataframe_of_cluster(spike_pos_by_clus, spike_time_by_clus, spike_amps_by_clus, original_clus_id,
+                             nb_units_session, motion_sessions, id_kept_Bc)
+if LoadTDTCorrectedTimes:
     with open("E:/Jeffrey/Projects/SpeechAndNoise/Spikesorting_Output/tempDir/F2302_Challah/PFC_shank0_Challah/PFC_shank0/everythingAllAtOnce/corrected_spike_trains.pkl",'rb') as f:
             time_corrected_spiketrains= pickle.load(f)
     #time_corrected_spiketrains= pd.read_csv("E:/Jeffrey/Projects/SpeechAndNoise/Spikesorting_Output/tempDir/F2302_Challah/PFC_shank0_Challah/PFC_shank0/everythingAllAtOnce/corrected_spike_trains.csv")
@@ -1444,69 +1382,24 @@ for (iiiii,shankSplitSubset) in enumerate(shankSplitSubsets.T):
             time_corrected_to_tdt.append(time_corrected_spiketrains['Times'].iloc[i])
     Df_clusters['Time corrected to TDT']= time_corrected_to_tdt
 
-    # Df_clusters_old= create_dataframe_of_cluster(spike_pos_by_clus, spike_time_by_clus, spike_amps_by_clus, original_clus_id,
-    #                             nb_units_session, motion_sessions_old)
+Df_behavior= get_df_behavior(behavior_path, sessionNames)
 
-    Df_behavior= get_df_behavior(behavior_path, sessionNames)
+Df_GU_MUA= filter_GU_MUA(Df_clusters, GU_and_MUA, Id_Bc_all_clus)
+Df_Matched_GU_MUA= get_UM_id(Df_GU_MUA, UIDs)
+non_matched_units, matched_within, matched_accross, matched_both_ways= check_matching_status(Df_Matched_GU_MUA)
+add_matching_status_to_df(Df_Matched_GU_MUA, non_matched_units, matched_within, matched_accross, matched_both_ways)
+get_corrected_average_positions(Df_Matched_GU_MUA, motion_sessions)
+add_var_pos(Df_Matched_GU_MUA)
+add_isi(Df_Matched_GU_MUA)
+add_average_firing_rate(Df_Matched_GU_MUA)
+get_quantile_amplitude_per_session(Df_Matched_GU_MUA)
+Df_Matched_units= Df_Matched_GU_MUA[Df_Matched_GU_MUA['Matching status']=='Accross']
 
-    Df_GU_MUA= filter_GU_MUA(Df_clusters, GU_and_MUA, Id_Bc_all_clus)
-    Df_Matched_GU_MUA= get_UM_id(Df_GU_MUA, UID_interpolation_UM_drift)
-    non_matched_units, matched_within, matched_accross, matched_both_ways= check_matching_status(Df_Matched_GU_MUA)
-    add_matching_status_to_df(Df_Matched_GU_MUA, non_matched_units, matched_within, matched_accross, matched_both_ways)
-    get_corrected_average_positions(Df_Matched_GU_MUA, motion_sessions)
-    add_var_pos(Df_Matched_GU_MUA)
-    Df_Matched_units= Df_Matched_GU_MUA[Df_Matched_GU_MUA['Matching status']=='Accross']
+plot_rasters_units(Df_Matched_units, Df_behavior, Trials_alignement_variable= 'lickRelease')
 
-    plot_rasters_units(Df_Matched_units, Df_behavior, Trials_alignement_variable= 'lickRelease')
+print('Plotting for motion correction without interpolation')
+get_df_and_plots(Df_clusters_old, GU_and_MUA, Id_Bc_all_clus, UID_no_interpolation_no_UM_drift)
 
-    print('Plotting for motion correction without interpolation')
-    get_df_and_plots(Df_clusters_old, GU_and_MUA, Id_Bc_all_clus, UID_no_interpolation_no_UM_drift)
-
-    print('Plotting for motion correction with interpolation')
-
-    get_df_and_plots(Df_clusters, GU_and_MUA, Id_Bc_all_clus, UID_interpolation_no_UM_drift)
-
-    print('Plotting for motion correction with interpolation and UM drift correction')
-
-    get_df_and_plots(Df_clusters, GU_and_MUA, Id_Bc_all_clus, UID_interpolation_UM_drift)
-
-    print('Plotting for no motion correction and UM drift correction')
-
-    get_df_and_plots(Df_clusters, GU_and_MUA, Id_Bc_all_clus, UID_nochannelcorr_UM_drift)
-
-
-    get_df_and_plots(Df_clusters, GU_and_MUA, Id_Bc_all_clus, UIDs)
-
-
-    get_df_and_plots(Df_clusters, GU_and_MUA, Id_Bc_all_clus, UIDs)
-
-
-    Df_GU_MUA= filter_GU_MUA(Df_clusters, GU_and_MUA, Id_Bc_all_clus)
-    Df_Matched_GU_MUA= get_UM_id(Df_GU_MUA, UID_channelcorr)
-    non_matched_units, matched_within, matched_accross, matched_both_ways= check_matching_status(Df_Matched_GU_MUA)
-    add_matching_status_to_df(Df_Matched_GU_MUA, non_matched_units, matched_within, matched_accross, matched_both_ways)
-    get_corrected_average_positions(Df_Matched_GU_MUA, motion_sessions)
-    add_var_pos(Df_Matched_GU_MUA)
-
-    print("Break")
-
-    #Df_GU_MUA= filter_GU_MUA(Df_clusters, GU_and_MUA, Id_Bc_all_clus)
-    Df_Matched_GU_MUA_nocorr= get_UM_id(Df_GU_MUA, UID_nochannelcorr)
-    non_matched_units, matched_within, matched_accross, matched_both_ways= check_matching_status(Df_Matched_GU_MUA_nocorr)
-    add_matching_status_to_df(Df_Matched_GU_MUA_nocorr, non_matched_units, matched_within, matched_accross, matched_both_ways)
-    get_corrected_average_positions(Df_Matched_GU_MUA_nocorr, motion_sessions)
-    add_var_pos(Df_Matched_GU_MUA_nocorr)
-
-    print('Break')
-
-    #Df_GU_MUA= filter_GU_MUA(Df_clusters, GU_and_MUA, Id_Bc_all_clus)
-    Df_Matched_GU_MUA_nodrift= get_UM_id(Df_GU_MUA, UID_no_UM_drift)
-    non_matched_units, matched_within, matched_accross, matched_both_ways= check_matching_status(Df_Matched_GU_MUA_nodrift)
-    add_matching_status_to_df(Df_Matched_GU_MUA_nodrift, non_matched_units, matched_within, matched_accross, matched_both_ways)
-    get_corrected_average_positions(Df_Matched_GU_MUA_nodrift, motion_sessions)
-    add_var_pos(Df_Matched_GU_MUA_nodrift)
-
-    print('Break')
 
 
 
