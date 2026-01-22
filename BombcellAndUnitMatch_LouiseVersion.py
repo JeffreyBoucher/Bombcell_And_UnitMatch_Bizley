@@ -911,6 +911,7 @@ def plot_spikes_gradient_per_session(filtered_df, gradient_parameters, pos_to_pl
     matplotlib.use('TkAgg')
     spike_pos_all_units= np.array(filtered_df[pos_to_plot])
     spike_times_all_units= np.array(filtered_df['Times'])
+    sessions= np.array(filtered_df['Session'])
     map_colors_per_session=[]
     for i in np.unique(sessions):
         Df_this_session= filtered_df[filtered_df['Session'] == i]
@@ -1395,10 +1396,10 @@ add_average_firing_rate(Df_Matched_GU_MUA)
 get_quantile_amplitude_per_session(Df_Matched_GU_MUA)
 Df_Matched_units= Df_Matched_GU_MUA[Df_Matched_GU_MUA['Matching status']=='Accross']
 
-plot_rasters_units(Df_Matched_units, Df_behavior, Trials_alignement_variable= 'lickRelease')
+#plot_rasters_units(Df_Matched_units, Df_behavior, Trials_alignement_variable= 'lickRelease')
 
 print('Plotting for motion correction without interpolation')
-get_df_and_plots(Df_clusters_old, GU_and_MUA, Id_Bc_all_clus, UID_no_interpolation_no_UM_drift)
+get_df_and_plots(Df_Matched_GU_MUA, GU_and_MUA, Id_Bc_all_clus, UIDs)
 
 
 
