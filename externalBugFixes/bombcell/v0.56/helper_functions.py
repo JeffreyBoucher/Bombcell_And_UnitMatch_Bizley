@@ -700,6 +700,7 @@ def _save_gui_data(gui_data, save_path, unique_templates, param):
 def get_all_quality_metrics(
     unique_templates,
     spike_times_seconds,
+    spike_pos,
     spike_clusters,
     template_amplitudes,
     time_chunks,
@@ -722,6 +723,8 @@ def get_all_quality_metrics(
         The array which converts bombcell id to kilosort id
     spike_times_seconds : ndarray
         The times of spikes in seconds
+    spike_pos : ndarray
+        The positions of spikes in um
     spike_clusters : ndarray
         The id of each spike
     template_amplitudes : ndarray
@@ -838,6 +841,12 @@ def get_all_quality_metrics(
             spike_times_seconds,
             param,
         )
+        if these_spike_times.size < 50: ### added because, following the prior code, a unit that was once okay stopped being okay. 
+            quality_metrics, not_enough_spikes = set_unit_nan(
+                unit_idx, quality_metrics, not_enough_spikes
+            )
+            bad_units += 1
+            continue
         runtimes_chunks_to_keep[unit_idx] = time.time() - time_tmp
 
         use_these_times = np.array(
@@ -988,6 +997,11 @@ def get_all_quality_metrics(
                 pc_features, pc_features_idx, this_unit, spike_clusters, param
             )
         runtime_dist_metrics = time.time() - time_tmp
+        
+        if param["computeSpatialSpreadSpikes"]:
+            these_spike_pos = spike_pos[spike_clusters == this_unit]
+            quality_metrics["spatialSpread"][unit_idx] = np.std(these_spike_pos)
+            
 
         # Precompute GUI data during quality metrics computation
         if unit_idx < len(template_waveforms):
@@ -1069,6 +1083,7 @@ def run_bombcell(ks_dir, save_path, param):
     
     (
         spike_times_samples,
+        spike_pos,
         spike_clusters, # actually spike_templates, but they're the same in bombcell
         template_waveforms,
         template_amplitudes,
@@ -1122,6 +1137,7 @@ def run_bombcell(ks_dir, save_path, param):
             non_empty_units,
             duplicate_spike_idx,
             spike_times_samples,
+            spike_pos,
             spike_clusters,
             template_amplitudes,
             pc_features,
@@ -1131,6 +1147,7 @@ def run_bombcell(ks_dir, save_path, param):
             maxChannels,
         ) = qm.remove_duplicate_spikes(
             spike_times_samples,
+            spike_pos,
             spike_clusters,
             template_amplitudes,
             maxChannels,
@@ -1143,7 +1160,7 @@ def run_bombcell(ks_dir, save_path, param):
         )
     else:
         non_empty_units = np.unique(spike_clusters)
-
+      
     # Remove excess spikes
     if param["removeExcessSpikes"]:
         (
@@ -1173,7 +1190,7 @@ def run_bombcell(ks_dir, save_path, param):
         )
     else:
         non_empty_units = np.unique(spike_clusters)
-
+    
     # Divide recording into time chunks
     spike_times_seconds = spike_times_samples / param["ephys_sample_rate"]
     if param["computeTimeChunks"]:
@@ -1203,6 +1220,7 @@ def run_bombcell(ks_dir, save_path, param):
     quality_metrics, times = get_all_quality_metrics(
         unique_templates,
         spike_times_seconds,
+        spike_pos,
         spike_clusters,
         template_amplitudes,
         time_chunks,
@@ -1251,7 +1269,7 @@ def run_bombcell(ks_dir, save_path, param):
     )
 
 
-def run_bombcell_unit_match(ks_dir, save_path, raw_file=None, meta_file=None, kilosort_version=4, gain_to_uV=None):
+def run_bombcell_unit_match(ks_dir, save_path, raw_file=None, meta_file=None, kilosort_version=4, gain_to_uV=None, TestWithoutRaw=False):
     """
     This function runs bombcell pipeline with parameters optimized for UnitMatch
     
@@ -1285,6 +1303,14 @@ def run_bombcell_unit_match(ks_dir, save_path, raw_file=None, meta_file=None, ki
     
     # Get unit match specific parameters
     param = get_unit_match_parameters(ks_dir, raw_file, kilosort_version, meta_file, gain_to_uV)
+    if TestWithoutRaw:
+        param["detrendWaveform"] = True  # BombCell average waveforms should be detrended for quality metrics
+        param["detrendForUnitMatch"] = False  # UnitMatch raw waveforms should not be detrended (it is done in-house)
+        param["nRawSpikesToExtract"] = 1000  # inf if you don't encounter memory issues and want to load all spikes
+        param["saveMultipleRaw"] = True  # If you wish to save the nRawSpikesToExtract as well,
+                                         # currently needed if you want to run unit match https://github.com/EnnyvanBeest/UnitMatch
+                                         # to track chronic cells over days after this
+        param["decompress_data"] = True  # UnitMatch typically needs decompression enabled
     
     if param.get("verbose", False):
         print("🚀 Running BombCell with UnitMatch parameters...")

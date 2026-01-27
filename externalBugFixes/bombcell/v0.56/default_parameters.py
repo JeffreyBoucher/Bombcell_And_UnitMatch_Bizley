@@ -43,17 +43,15 @@ def get_default_parameters(
         "ephysKilosortPath": str(kilosort_path),  # path to the KiloSort directory
 
         ## Duplicate spike parameters
-        "removeDuplicateSpikes": False,
+        "removeDuplicateSpikes": True,
         "duplicateSpikeWindow_s": 0.000034,  # in seconds
         "saveSpikes_withoutDuplicates": True,
         "recomputeDuplicateSpikes": False,
-
-        ## Duplicate spike parameters (added by Louise)
-
+        
+        ## Excess spike parameters
         "removeExcessSpikes": True,
         "recomputeExcessSpikes": False,
         "saveSpikes_withoutExcess": True,
-
 
         ## Amplitude / raw waveform parameters
         "detrendWaveform": True,  # If True will linearly de-trend the average waveforms for BombCell
@@ -72,12 +70,12 @@ def get_default_parameters(
         # bombcell will estimate values in between using
         # tauR_valuesStep
         "tauC": 0.1 / 1000,  # censored period time (s), to prevent duplicate spikes
-        "hillOrLlobetMethod": True,  # use hill if 1, else use Llobet et al.
+        "hillOrLlobetMethod": True,  # use hill (rate of RPV) if 1, else use Llobet et al. (rate of contaminant spike even outside RP)
 
         ## Percentage spikes missing parameters
-        "computeTimeChunks": False,  # compute fraction refractory period violations and
+        "computeTimeChunks": True,  # compute fraction refractory period violations and
         # percent spikes missing for different time chunks
-        "deltaTimeChunk": 120, # 360,  # time in seconds ### changed from default by Louise
+        "deltaTimeChunk": 120, #360,  # time in seconds
 
         ## Presence  ratio
         "presenceRatioBinSize": 60,  # in seconds
@@ -106,6 +104,10 @@ def get_default_parameters(
         ## Distance metric parameters
         "computeDistanceMetrics": False,  # If True computes distance metics NOTE is slow in ML
         "nChannelsIsoDist": 4,  # Number of nearby channels to use in distance metric computation
+        
+        ## ADDED BY LOUISE, Spatial spreak of spikes
+        "computeSpatialSpreadSpikes": True,
+        "maxSpread": 25,
 
         # Quality metric classification parameters
         "splitGoodAndMua_NonSomatic": False,  # whether to classify non-somatic units
@@ -115,30 +117,26 @@ def get_default_parameters(
         "minWvDuration": 100,  # in us
         "maxWvDuration": 1150,  # in us
         "minSpatialDecaySlope": -0.008,
-        "minSpatialDecaySlopeExp": 0.01,  # in a.u / um
+        "minSpatialDecaySlopeExp": 0.005,  # in a.u / um
         "maxSpatialDecaySlopeExp": 0.1,  # in a.u / um
-        "maxWvBaselineFraction": 0.3,  # maximum absolute value in waveform baseline should not
+        "maxWvBaselineFraction": 0.25,  # maximum absolute value in waveform baseline should not
         # exceed this fraction of the waveforms's absolute peak
-        "maxScndPeakToTroughRatio_noise": 0.8, 
+        "maxScndPeakToTroughRatio_noise": 0.8,
         "minTroughToPeak2Ratio_nonSomatic": 5,
         "minWidthFirstPeak_nonSomatic": 4,
         "minWidthMainTrough_nonSomatic": 5,
         "maxPeak1ToPeak2Ratio_nonSomatic": 3,
         "maxMainPeakToTroughRatio_nonSomatic": 0.8,
 
-        ## Distance metrics
-        "isoDmin": 20,  # minimum isolation distance value
-        "lratioMax": 0.3,  # maximum l-ratio value
-        "ss_min": np.nan,  # minimum silhouette score, not currently implemented
-        
         ## Other classification parameters
-        "minAmplitude": 40,  # in uV
-        "maxRPVviolations": 0.1,  # max fraction of refractory period violations
+        "minAmplitude": 10,  # in uV
+        "maxRPVviolations": 0.3,  # max fraction of refractory period violations
         "maxPercSpikesMissing": 20,  # max percentage of missing spikes
-        "minNumSpikes": 300,  # minimum number of total spikes recorded
+        "minNumSpikes": 500,  # minimum number of total spikes recorded
         "maxDrift": 100,  # in um
         "minPresenceRatio": 0.7,  # minimum fraction of time chunks unit must be present for
         "minSNR": 5,  # min SNR for a good unit
+
     }
 
 
