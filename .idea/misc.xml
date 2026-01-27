@@ -3,4 +3,5 @@
   <component name="Black">
     <option name="sdkName" value="BcUM" />
   </component>
+  <component name="ProjectRootManager" version="2" project-jdk-name="Bombcell_And_UnitMatch_Bizley" project-jdk-type="Python SDK" />
 </project>

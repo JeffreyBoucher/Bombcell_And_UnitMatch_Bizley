@@ -38,6 +38,10 @@ except ImportError as e:
 
 print("🚀 Ready to analyze neural data!")
 
+##### import VE-independent configs like addresses and such
+import all_VE_config as all_VE_config
+
+
 ###### THIS IS JEFFREY AND MINE4S CODE SPECIFIC, incluse your own function that outputs a 1-dimensional array of pathlib.Path objects
 # representing the directories of NP sessions, sorted in ascending order for all the sessions you want
 #        of their file creation times.
@@ -102,72 +106,8 @@ def load_meta_file(metafile):
 ###### SECOND CELL ########
 #THIS IS JEFFREY AND MINE SPECIFIC, WILL SOON BE A FUNCTION
 if True: # iterating way to get session configs for a range of sessions. Uses a copy-paste of the strategy used in spikesorting.
-    ###PARAMETERS
-    session_path = Path('Z:/Data/Neuropixels/F2302_Challah/')  # path to where all relevant sessions are stored
-    ferret = 'F2302_Challah'
-    recordingZone = 'PFC_shank0_Challah'
-    behavior_path = "C:/Users/BizLab/Dropbox/Data/"+ferret
 
-    if recordingZone == 'PFC_shank0_Challah':
-        stream_id = 'imec1.ap'
-        # sessionSetLabel = 'TwentiesOfMay'
-        # sessionSetLabel = "AllJune"
-        # sessionSetLabel = "AllMay"
-        # sessionSetLabel = 'Tens_Of_June'
-        sessionSetLabel = "everythingAllAtOnce"
-        channel_map_to_use = 'Challah_top_PFC_shank0.imro'
-        recordingZoneRepeat = 'PFC_shank0'
-        badChannelList = [21, 109, 133, 170, 181, 202, 295, 305, 308, 310, 327, 329, 339]
-        # something else also. Need to read metadata
-        manuallySplitShank = False
-        if manuallySplitShank:
-            manualShankSplitRanged = [[0,3625],[3625,4500],[4500,10000]]
-            manualShankSplitNames = ["Top","Middle","Bottom"]
-        else:
-            manualShankSplitRanged = [[0, 10000]]
-            manualShankSplitNames = ["All"]
-    elif recordingZone == 'PFC_shank3_Challah':
-        stream_id = 'imec1.ap'
-        # sessionSetLabel = 'TwentiesOfMay'
-        sessionSetLabel = "AllJune"
-        # sessionSetLabel = 'Tens_Of_June'
-        channel_map_to_use = 'Challah_top_PFC_shank3.imro'
-        badChannelList = [21, 109, 133, 170, 181, 202, 295, 305, 308, 310, 327, 329, 339]
-        # something else also. Need to read metadata
-        manuallySplitShank = False
-        if manuallySplitShank:
-            manualShankSplitRanged = [[0,3625],[3625,4500],[4500,10000]]
-            manualShankSplitNames = ["Top","Middle","Bottom"]
-        else:
-            manualShankSplitRanged = [[0, 10000]]
-            manualShankSplitNames = ["All"]
-    # output_folder = Path('F:/Louise/Output')
-    #output_folder = Path('F:/Jeff/Output')
-    output_folder = Path("E:/Jeffrey/Projects/SpeechAndNoise/Spikesorting_Output")
-
-    if sessionSetLabel == 'All_ACx_Top':
-        sessionString = '[0-9][0-9]*'  ### this actually selects more than just the top
-    elif sessionSetLabel == 'Tens_Of_June':
-        sessionString = '1[0-9]06*'
-    elif sessionSetLabel == 'TheFirstDay':
-        sessionString = '1305*'
-    elif sessionSetLabel == 'TheFirstSession':
-        sessionString = '1305*AM*'
-    elif sessionSetLabel == "TwentiesOfMay":
-        sessionString = '2[0-9]052024*'
-    elif sessionSetLabel == 'TensOfMay':
-        sessionString = '1[0-9]052024*'
-    elif sessionSetLabel == "AllJuly":
-        sessionString = '*072024*'
-    elif sessionSetLabel == "AllJune":
-        sessionString = '*062024*'
-    elif sessionSetLabel == "AllMay":
-        sessionString = '*052024*'
-    elif sessionSetLabel == 'everythingAllAtOnce':
-        sessionString = '*052024*'
-
-    SessionsInOrder = sort_np_sessions(list(session_path.glob(sessionString)))
-    sessionSetName = sessionSetLabel
+    SessionsInOrder = sort_np_sessions(list(all_VE_config.session_path.glob(all_VE_config.sessionString)))
     sessionNames= []
     for i, session in enumerate(SessionsInOrder):
         # if i==len(SessionsInOrder)-2:
@@ -187,22 +127,26 @@ if True: # iterating way to get session configs for a range of sessions. Uses a 
         session_name = session.name
         sessionNames.append(session_name)
         session_configs[i]["name"] = session_name
-        working_dir = output_folder / 'tempDir' / ferret / session_name
-        dp = session_path / session_name
+        working_dir = all_VE_config.output_folder / 'tempDir' / all_VE_config.ferret / session_name
+        dp = all_VE_config.session_path / session_name
 
-        probeFolder = list(dp.glob('*' + stream_id[:-3]))
+        probeFolder = list(dp.glob('*' + all_VE_config.stream_id[:-3]))
         probeFolder = probeFolder[0]  # name of probe folder
-        session_configs[i]["meta_file"] = probeFolder / (session_name + '_t0.' + stream_id + '.meta')
+        session_configs[i]["meta_file"] = probeFolder / (session_name + '_t0.' + all_VE_config.stream_id + '.meta')
 
         ### hey by the way, apparently they prefer if your raw data is phase corrected and CAR. So I should maybe save some raws with SI that meet that requirement...
         session_configs[i]["raw_file"] = list(probeFolder.glob('*.bin'))[0] #obviously only works for bins, not cbin
-        #session_configs[i]["ks_dir"] = output_folder / 'tempDir' / ferret / recordingZone / sessionSetLabel / sessionSetName / session_name /  Path("tempDir/kilosort4_output/sorter_output/")
-        #session_configs[i]["save_path"] = output_folder / 'tempDir' / ferret / recordingZone / sessionSetLabel / sessionSetName / session_name /  Path("tempDir/kilosort4_output/sorter_output/")
-        session_configs[i]["ks_dir"] = output_folder / 'tempDir' / ferret / recordingZone / recordingZoneRepeat / sessionSetName / session_name /  Path("tempDir/kilosort4_output/sorter_output/")
-        session_configs[i]["save_path"] = output_folder / 'tempDir' / ferret / recordingZone / recordingZoneRepeat / sessionSetName / session_name /  Path("tempDir/kilosort4_output/sorter_output/")
+        session_configs[i]["ks_dir"] = all_VE_config.output_folder / 'tempDir' / all_VE_config.ferret / all_VE_config.sessionSetLabel / session_name /  Path("tempDir/kilosort4_output/sorter_output/")
+        session_configs[i]["save_path"] = all_VE_config.output_folder / 'tempDir' / all_VE_config.ferret / all_VE_config.sessionSetLabel / session_name /  Path("tempDir/kilosort4_output/sorter_output/")
+
+
+        # session_configs[i]["ks_dir"] = all_VE_config.output_folder / 'tempDir' / all_VE_config.ferret / all_VE_config.recordingZone / all_VE_config.sessionSetLabel / all_VE_config.sessionSetName / session_name /  Path("tempDir/kilosort4_output/sorter_output/")
+        # session_configs[i]["save_path"] = all_VE_config.output_folder / 'tempDir' / all_VE_config.ferret / all_VE_config.recordingZone / all_VE_config.sessionSetLabel / all_VE_config.sessionSetName / session_name /  Path("tempDir/kilosort4_output/sorter_output/")
+        # session_configs[i]["ks_dir"] = all_VE_config.output_folder / 'tempDir' / all_VE_config.ferret / all_VE_config.recordingZone / recordingZoneRepeat / sessionSetName / session_name /  Path("tempDir/kilosort4_output/sorter_output/")
+        # session_configs[i]["save_path"] = all_VE_config.output_folder / 'tempDir' / all_VE_config.ferret / all_VE_config.recordingZone / recordingZoneRepeat / sessionSetName / session_name /  Path("tempDir/kilosort4_output/sorter_output/")
         custom_bombcell_paths  = custom_bombcell_paths  + [session_configs[i]["ks_dir"] / Path("cluster_bc_unitType.tsv")]
         custom_raw_waveform_paths = custom_raw_waveform_paths + [session_configs[i]["ks_dir"] / Path("RawWaveforms")]
-        breakpointGoesHere = True
+        pass
 
 
 kilosort_version = 4
@@ -267,7 +211,7 @@ def run_bombcell_session(session_config):
             raw_file=raw_file,
             meta_file=meta_file,
             kilosort_version=kilosort_version,
-            TestWithoutRaw=True
+            # TestWithoutRaw=True
         )
 
         print(f"   ✅ Analysis complete!")
