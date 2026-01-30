@@ -138,7 +138,7 @@ if True: # iterating way to get session configs for a range of sessions. Uses a 
         session_configs[i]["raw_file"] = list(probeFolder.glob('*.bin'))[0] #obviously only works for bins, not cbin
         session_configs[i]["ks_dir"] = all_VE_config.output_folder / 'tempDir' / all_VE_config.ferret / all_VE_config.sessionSetLabel / session_name /  Path("tempDir/kilosort4_output/sorter_output/")
         session_configs[i]["save_path"] = all_VE_config.output_folder / 'tempDir' / all_VE_config.ferret / all_VE_config.sessionSetLabel / session_name /  Path("tempDir/kilosort4_output/sorter_output/")
-
+        session_configs[i]["motion_path"] = all_VE_config.motionMapFolder / 'spikesorted' / all_VE_config.ferret / all_VE_config.sessionSetLabel # this will actually be the same for every session
 
         # session_configs[i]["ks_dir"] = all_VE_config.output_folder / 'tempDir' / all_VE_config.ferret / all_VE_config.recordingZone / all_VE_config.sessionSetLabel / all_VE_config.sessionSetName / session_name /  Path("tempDir/kilosort4_output/sorter_output/")
         # session_configs[i]["save_path"] = all_VE_config.output_folder / 'tempDir' / all_VE_config.ferret / all_VE_config.recordingZone / all_VE_config.sessionSetLabel / all_VE_config.sessionSetName / session_name /  Path("tempDir/kilosort4_output/sorter_output/")
@@ -1156,7 +1156,8 @@ print("🎯 Setting up UnitMatch for cross-session tracking...")
 um_param = default_params.get_default_param()
 
 #Set up parameters that define whether the whole code is ran or variables are just loaded from pickles
-RunUnitMatch= False
+### JEFF NEEDS TO PUT THESE INTO  CONFIG FILE
+RunUnitMatch= True
 SaveUIDToCSV= False
 LoadPickleBombcellAndKilosort= True
 LoadPickleDataFrame= False
@@ -1183,10 +1184,20 @@ for i, wv_path in enumerate(custom_raw_waveform_paths):
     n_files = len(list(Path(wv_path).glob("Unit*_RawSpikes.npy"))) if Path(wv_path).exists() else 0
     print(f"   Session {i + 1}: {exists} {n_files} waveform files")
 
-motion_sessions= pd.read_csv(KS_dirs[-1]/ 'motion_sessions.csv')
-motion_sessions_old= pd.read_csv(KS_dirs[-1]/ 'motion_sessions_old.csv')
-motion_week= pd.read_csv(KS_dirs[-1]/ 'motion_weeks.csv')
-week_session_correspondance= np.load(KS_dirs[-1]/ 'session_to_week_id.npy')
+if all_VE_config.doMultipleShanks:
+    motionPath = session_configs[0]["motion_path"]
+    shankFolders = list(motionPath.glob('Shank*'))
+    motion_sessions = []
+    motion_week = []
+    for i,shankFolder in enumerate(shankFolders):
+        motion_sessions.append(pd.read_csv(shankFolder/ 'motion_sessions.csv'))
+        motion_week.append(pd.read_csv(shankFolder/ 'motion_weeks.csv'))
+else:
+    motionPath = session_configs[0]["motion_path"]
+    motion_sessions= pd.read_csv(motionPath/ 'motion_sessions.csv')
+    # motion_sessions_old= pd.read_csv(motionPath/ 'motion_sessions_old.csv') ### under construction, think I only need one of these.
+    motion_week= pd.read_csv(motionPath/ 'motion_weeks.csv')
+    # week_session_correspondance= np.load(KS_dirs[-1]/ 'session_to_week_id.npy') ### under construction, think I only need one of these.
 
 
 

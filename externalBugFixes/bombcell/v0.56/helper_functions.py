@@ -1000,6 +1000,8 @@ def get_all_quality_metrics(
         
         if param["computeSpatialSpreadSpikes"]:
             these_spike_pos = spike_pos[spike_clusters == this_unit]
+            if not( "spatialSpread" in quality_metrics): ### this was added by Jeff... Possibly I only needed it because I did not copy something Louise did.
+                quality_metrics["spatialSpread"] = np.zeros((unique_templates.size,1))
             quality_metrics["spatialSpread"][unit_idx] = np.std(these_spike_pos)
             
 

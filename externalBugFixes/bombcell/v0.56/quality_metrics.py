@@ -14,7 +14,7 @@ from bombcell.extract_raw_waveforms import path_handler
 
 def get_waveform_peak_channel(template_waveforms):
     """
-    Get the max channel for all templates (channel with largest amplitude)
+    Get the max channel for all templaftes (channel with largest amplitude)
 
     Parameters
     ----------

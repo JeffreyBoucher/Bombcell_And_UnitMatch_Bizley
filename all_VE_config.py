@@ -99,6 +99,7 @@ if projectLabel == 'Jeffrey': # manages the highest-level selection of sessions 
 if projectLabel == 'Jeffrey':
     if computerUsed == 'JeffreyLabDesktop': # contains folder and file arguments, including higher-level ones like ferret name. Likely to be specific to my project
         output_folder = Path('C:\\Jeffrey\\Projects\\SpeechAndNoise\\Spikesorting_Output')
+        motionMapFolder = Path('C:/Jeffrey/Projects/SpeechAndNoise/Spikesorting_Inputs/SessionSetDriftmaps')
     elif computerUsed == 'ExternalDriveD':
         output_folder = Path('D:/Jeffrey/Projects/SpeechAndNoise/Spikesorting_Output')
     # session_path = Path('Z:/Data/Neuropixels/' + ferret)  # path to where all relevant sessions are stored
